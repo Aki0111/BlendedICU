@@ -4,6 +4,7 @@ import operator
 import json
 import shutil
 import os
+from string import printable
 import chardet
 import random
 
@@ -15,7 +16,12 @@ import polars as pl
 class DataProcessor:
     def __init__(self,
                  dataset,
-                 datasets=('eicu', 'mimic4', 'mimic3', 'hirid', 'amsterdam')):
+                 datasets=('eicu',
+                          'mimic4',
+                       #  'mimic3', 
+                         'hirid', 
+                       #  'amsterdam'
+                         )):
         self.datasets = datasets
         self.dataset = dataset
         self.SEED = 974
@@ -23,22 +29,29 @@ class DataProcessor:
         self.pth_dic = self._read_json('paths.json')
         self.config = self._read_json('config.json')
         self.data_pth = self.pth_dic['data_path']
-        self.blendedicu_pth = self.data_pth+'/blended_data/'
+        # data_pth (str): 数据根目录路径E:/Science/Blended/
+        self.blendedicu_pth = self.data_pth+'blended_data/'
         self.labels_pths = {d: self._preprocessed_pth(d, 'labels') for d in self.datasets}
+        #self.labels_pths = {'eicu': 'E:/Science/Blended/eicu_data/preprocessed_labels.parquet', ...}
+        #labels_pths (dict): 各数据集标签文件路径。
         self.diagnoses_pths = {d: self._preprocessed_pth(d, 'diagnoses') for d in self.datasets}
+        #self.diagnoses_pths = {'eicu': 'E:/Science/Blended/eicu_data/preprocessed_diagnoses.parquet', ...}
         self.savepath = self.data_pth + self._datadir_name()
-        self.raw_as_parquet_pth = self.savepath + '/raw_parquet/'
+        #self.savepath = E:/Science/Blended/eicu_data/
+        self.raw_as_parquet_pth = self.savepath + 'raw_parquet/'
         try:
             if not os.path.exists(self.raw_as_parquet_pth):
                 os.makedirs(self.raw_as_parquet_pth)
+                #目录不存在时，创建该目录。
                 print(f"Directory '{self.raw_as_parquet_pth}' created.")
         except OSError:
             print(f"Creation of the directory '{self.raw_as_parquet_pth}' failed.")
         self.aux_pth = self.pth_dic['auxillary_files']
         self.voc_pth = self.pth_dic['vocabulary']
         self.user_input_pth = self.pth_dic['user_input']
-        try:
+        try: 
             self.source_pth = self.pth_dic[f'{self.dataset}_source_path']
+            #sel.source_pth = self.pth_dic['eicu_source_path']
         except KeyError:
             self.source_pth = None
         
@@ -50,6 +63,7 @@ class DataProcessor:
         self.pth_drug_admin_route = self.user_input_pth + 'med_administration_routes.json'
 
         self.ohdsi_med = self._load_ohdsi_mapping(self.med_file)
+        #self.ohdsi_med =
         self.ohdsi_diag = self._load_ohdsi_mapping(self.diag_file)
         self.med_concept_id = self._concept_id_mapping(self.ohdsi_med)
         self.diag_concept_id = self._concept_id_mapping(self.ohdsi_diag)
@@ -94,13 +108,15 @@ class DataProcessor:
         self.diag_mapping = self._label_to_blended_mapping(self.ohdsi_diag)
         self.clipping_quantiles = None
         self.labels = None
-        self.med_savepath = f'{self.savepath}/medication.parquet'
-        self.labels_savepath = f'{self.savepath}/labels.parquet'
-        self.flat_savepath = f'{self.savepath}/flat.parquet'
-        self.diag_savepath = f'{self.savepath}/diagnoses.parquet'
+        self.med_savepath = f'{self.savepath}medication.parquet'
+        self.labels_savepath = f'{self.savepath}labels.parquet'
+        self.flat_savepath = f'{self.savepath}flat.parquet'
+        self.diag_savepath = f'{self.savepath}diagnoses.parquet'
 
         
     def _preprocessed_pth(self, dataset, name):
+        #_preprocessed_pth(hirid,'labels')
+        #> E:/Science/Blended/hirid_data/preprocessed_labels.parquet
         return (f'{self.data_pth}/'
                 +self._datadir_name(dataset)
                 +f'preprocessed_{name}.parquet')
@@ -108,7 +124,7 @@ class DataProcessor:
     def _datadir_name(self, dataset=None):
         if dataset is None:
             dataset = self.dataset
-        return f'/{dataset}_data/'
+        return f'{dataset}_data/'
         
     def _mkdirs(self):
         for pth in (self.formatted_ts_dir,
@@ -197,26 +213,53 @@ class DataProcessor:
         if Path(pth).is_dir():
             return pl.scan_parquet(pth+'/*.parquet')
         return pl.scan_parquet(pth)
-
+    # self.save(self.med, self.med_savepath)
     def save(self, df, savepath, pyarrow_schema=None, verbose=True, row_group_size=None):
+        # print('最终保存前的schema:', df.schema)
+        # print(f'Columns: {df.columns}')
+        # aaa=df.collect()
+        # print(f'调试,df={aaa}')
         """
         convenience function: save safely a file to parquet by creating the 
         parent directory if it does not exist.
         """
         Path(savepath).parent.mkdir(parents=True, exist_ok=True)
-
+        #savepath = E:/Science/Blended/hirid_data/medication.parquet'
         if isinstance(df, pl.lazyframe.frame.LazyFrame):
+            print('存在LazyFrame')
+            # if "original_drugname" in df.columns:
+            #     print('original_drugname列存在')
+            #     df = df.with_columns(pl.col("original_drugname").cast(pl.String))
             if verbose:
                 print(f' --> Sinking {savepath}', end=" ")
+                print(f'Columns: {df.columns}')
+                print(f'Schema: {df.schema}')
             try:
-                df.sink_parquet(savepath, row_group_size=row_group_size)
+                print('尝试直接将LazyFrame保存为parquet文件')
+                # print('最终保存前的列:', df.columns)
+                # print('最终保存前的schema:', df.schema)
+                if "/hirid_data/timeseries.parquet" in str(savepath):
+                    print("检测到特定大文件 /hirid_data/timeseries.parquet，启用内存优化模式...")
+                    df.sink_parquet(
+                                    savepath,
+                                    row_group_size=200,  
+                                )
+                else:
+                    df.sink_parquet(savepath, row_group_size=row_group_size)
                 print('done')
                 return df
             except pl.exceptions.InvalidOperationError as e:
-                print(f'/!\ Sinking failed. \n{e}\n       ---> Collecting...',
+                print('直接保存失败，则先收集数据再处理')
+                print(f' /!\ Sinking failed. \n{e}\n       ---> Collecting...',
                       end=" ")
-                df = df.collect()
-                print('done.')
+                try:
+                    df = df.collect()
+                    print('done.')
+                except pl.exceptions.InvalidOperationError as collect_error:
+                    # 如果收集也失败，说明存在数据类型问题
+                    print(f'Collect failed: {collect_error}')
+                    # 可以在这里添加更详细的错误处理
+                    raise collect_error
         
         if isinstance(df, pl.dataframe.frame.DataFrame):
             print(f' --> pl.writing {savepath}', end=" ")

@@ -7,11 +7,13 @@ import pandas as pd
 
 class meds:
     def __init__(self, pth_dic, name='omop'):
+        #super().__init__(pth_dic)传入
         self.pth_dic = pth_dic
         self.aux_pth = pth_dic['auxillary_files']
         self.user_input_pth = pth_dic['user_input']
         self.med_mapping_pth = pth_dic['medication_mapping_files']
         self.source_name = name + '_source_path'
+        #source_name = 'omop_source_path'
         if self.source_name in pth_dic:
             self.datadir = pth_dic[self.source_name]
         self.name = name
@@ -28,11 +30,20 @@ class Eicu_meds(meds):
         
     def get(self):
         print('\n\neICU\n===========\n')
+        #self.datadir = pth_dic['eicu_source_path'],即"../database/eICU/"
+        #压缩文件路径
         patients_pth = self.datadir+'patient.csv.gz'
         eicu_admissiondrug_pth = self.datadir+'admissionDrug.csv.gz'
         eicu_infusiondrug_pth = self.datadir+'infusionDrug.csv.gz'
         eicu_medication_pth = self.datadir+'medication.csv.gz'
 
+
+
+        #有点问题，读的都是压缩文件
+        #这里的文件扩展名是 .csv.gz，
+        #pandas.read_csv 实际上支持直接读取 gzip 压缩的 csv 文件，不需要提前手动解压。
+        #只要文件存在且是标准 gzip 格式，read_csv 会自动解压并读取内容。
+        #hirid是tar.gz,所以要用tarfile解压
         eicu_infusion = pd.read_csv(eicu_infusiondrug_pth)
         eicu_admission = pd.read_csv(eicu_admissiondrug_pth)
         eicu_med = pd.read_csv(eicu_medication_pth)
@@ -40,6 +51,8 @@ class Eicu_meds(meds):
         patients = pd.read_csv(patients_pth,
                                usecols=['patientunitstayid'])
 
+
+        #统计每个患者的药物种类出现频率，分别针对 infusion、admission、medication 三个表
         df_infusion = (patients.merge(eicu_infusion[['patientunitstayid',
                                                      'drugname']]
                                       .drop_duplicates(),
@@ -57,26 +70,32 @@ class Eicu_meds(meds):
                                  .drop_duplicates(),
                                  on='patientunitstayid', how='outer')
                   .drugname.value_counts())
-
+        #先去重，再按患者合并，最后统计药物名出现次数。
         eicu_meds = (pd.concat([df_med, df_infusion, df_admission])
                      .sort_values(ascending=False)/len(patients))
-
+        #按出现频率降序排序，并除以患者总数，得到每种药物的“患者占比”。
         eicu_meds = (pd.DataFrame(eicu_meds)
                      .reset_index())
         self.save(eicu_meds)
         eicu_meds['dataset'] = self.name
+        #eicu_meds结构为 (drugname, count, dataset)：
+        #index,drugname,patientunitstayid,dataset
         return eicu_meds
 
 
 class Hirid_meds(meds):
     def __init__(self, pth):
         super().__init__(pth, name='hirid')
-        self._admissions_untar_path = self.datadir + '/reference_data/'
+        #给med传name
+        #此时self.source_name = hirid_source_path,
+        #self.datadir = pth_dic['hirid_source_path'],即"../database/hirid/"
+        #self.savpath = "../database/medication_mapping_files/hirid_medications.csv"
+        self._admissions_untar_path = self.datadir + 'reference_data/'
         self.admissions_path = self._admissions_untar_path + 'general_table.csv'
         self.imputedstage_path = self.datadir + 'imputed_stage/parquet/'
         self.ts_path = self.datadir + 'observation_tables/parquet/'
         self.med_path = self.datadir + 'pharma_records/parquet/'
-        
+        #解压后会用到的文件路径
         self._untar_files()
         
     def _untar_files(self):
@@ -84,27 +103,43 @@ class Hirid_meds(meds):
         Uncompresses source files. Only proceeds if uncompressed files are not 
         found.
         """
+        #self.datadir = "../database/hirid/"
         ts_tar_path = self.datadir + 'raw_stage/observation_tables_parquet.tar.gz'
-        admissions_tar_path = self.datadir + 'reference_data.tar.gz'
         pharma_tar_path = self.datadir + 'raw_stage/pharma_records_parquet.tar.gz'
+        admissions_tar_path = self.datadir + 'reference_data.tar.gz'
         imputedstage_tar_path = self.datadir + 'imputed_stage/imputed_stage_parquet.tar.gz'
-        
+        #压缩文件路径
         files = {
             self.admissions_path: (admissions_tar_path, self._admissions_untar_path),
             self.imputedstage_path: (imputedstage_tar_path, self.datadir),
             self.ts_path: (ts_tar_path, self.datadir),
             self.med_path: (pharma_tar_path, self.datadir)
             }
+        #key：解压后用到的文件路径，目标路径的子路径
+        #value：一个元组，包含（压缩包路径，解压的目标目录）
+        #admissions_tar_path = "../database/hirid/raw_stage/observation_tables_parquet.tar.gz"
+        #self._admissions_untar_path = "../database/hirid/reference_data/"
+
 
         files_to_untar = {pth: args for pth, args in files.items() if not Path(pth).exists()}
+        #key不存在的文件则加入files_to_untar，只包含没解压的文件，结构与files一致
+        for pth, args in files_to_untar.items():
+            #执行解压
+            self._untar(*args)
         if files_to_untar:
+            #如果有没解压的文件，则提示用户是否进行解压
             if input(f'Untar {list(files_to_untar.keys())} ? y/[n]')=='y': 
                 for args in files_to_untar.values():
                     self._untar(*args)
+                    #星号表示可变参数，将多个参数打包为一个元组传入
+                    #这里相当于self._untar(admissions_tar_path, self._admissions_untar_path)
+                    
         else:
             print('Hirid files already untarred.')
+        
     
     def _untar(self, src, tgt):
+        #解压函数
         print(f'Untarring \n   {src} \n   into \n   {tgt}\n   This will only'
               ' be done once')
         tar = tarfile.open(src)
@@ -118,10 +153,13 @@ class Hirid_meds(meds):
         return hirid_patient
 
     def _load_hirid_pharmanames(self):
-        hirid_pharmaname_pth = self.datadir+'hirid_variable_reference_v1.csv'
+        hirid_pharmaname_pth = self.datadir+'/reference_data/hirid_variable_reference.csv'
+        # with open(hirid_pharmaname_pth, encoding='unicode_escape') as f:
+        #     for _ in range(5):
+        #         print(f.readline())
         hirid_pharmaname = pd.read_csv(hirid_pharmaname_pth,
-                                       sep=';',
-                                       encoding='unicode_escape',
+                                       sep=',',
+                                       encoding='utf-8-sig',
                                        usecols=['Source Table',
                                                 'ID',
                                                 'Variable Name'])
@@ -209,11 +247,12 @@ class Mimic4_meds(meds):
         super().__init__(pth, name='mimic4')
 
     def _load_inputevents(self):
+        #读取 ICU 药物输入事件表，只保留 stay_id 和 itemid 两列。
         print('Loading inputevents')
         pth_meds = self.datadir+'icu/inputevents.csv.gz'
         meds = pd.read_csv(pth_meds, usecols=['stay_id', 'itemid'])
         return meds
-
+    
     def get(self):
         print('\n\nMIMIC-IV\n===========\n')
         
@@ -226,10 +265,11 @@ class Mimic4_meds(meds):
                                                     'itemid',
                                                     'category'])
         n_patients = patients.stay_id.nunique()
+        #读取药物事件表、患者表和药物字典表，并计算唯一患者数量。
         df = (meds.drop_duplicates()
                   .merge(d_items, on='itemid')
                   .merge(patients, on='stay_id', how='outer'))
-        
+        #合并
         mimic4_medications = (df.loc[df.category == 'Medications', 'label']
                                .value_counts()/n_patients)
         mimic4_antibio = (df.loc[df.category == 'Antibiotics', 'label']
@@ -238,7 +278,7 @@ class Mimic4_meds(meds):
                           .value_counts()/n_patients)
         mimic4_col = (df.loc[df.category == 'Blood Products/Colloids', 'label']
                      .value_counts()/n_patients)
-        
+        #分别统计四类药物的出现频率
         mimic4_meds = (pd.concat([mimic4_medications,
                                   mimic4_antibio,
                                   mimic4_fluids,
@@ -250,6 +290,7 @@ class Mimic4_meds(meds):
                       .rename(columns={'label': 'drugname'}))
         self.save(mimic4_meds)
         mimic4_meds['dataset'] = self.name
+        #合并所有药物类别的统计结果，按频率降序排列，重命名列，保存为 CSV，并返回 DataFrame。
         return mimic4_meds
         
 
@@ -307,41 +348,59 @@ class Mimic3_meds(meds):
 class MedicationMapping(meds):
     def __init__(self,
                  pth_dic,
-                 datasets=['amsterdam',
+                 datasets=[
+                     #'amsterdam',
                            'hirid',
                            'eicu',
                            'mimic4',
-                           'mimic3']):
+                    #       'mimic3'
+                           ]):
         super().__init__(pth_dic)
+        #调用父类初始化
         pth_ohdsi = self.med_mapping_pth+'ohdsi_icu_medications.csv'
         pth_manual = self.user_input_pth+'manual_icu_meds.csv'
         self.ohdsi = pd.read_csv(pth_ohdsi, sep=';')
         self.manual_addings = pd.read_csv(pth_manual, sep=';')
         self.drug_mapping = pd.concat([self.ohdsi, self.manual_addings])
-
+        #读取 OHDSI 标准药物映射表和手动补充的药物映射表，合并为 self.drug_mapping，用于后续药物名与标准名的匹配。
         self.med_loaders = self._get_med_loaders(datasets)
+        #到目前为止进行了各数据集的加载（hirid进行了解压)
+       
 
     def _get_med_loaders(self, datasets):
+        #加载各数据集
         medloader_class = {
-            'amsterdam': Amsterdam_meds,
+ #           'amsterdam': Amsterdam_meds,
             'hirid': Hirid_meds,
             'eicu': Eicu_meds,
-            'mimic3': Mimic3_meds,
+ #           'mimic3': Mimic3_meds,
             'mimic4': Mimic4_meds
             }
         
         med_loaders = {}
         
         for dataset in datasets:
+            #datasets = ['amsterdam', 'hirid', 'eicu', 'mimic4', 'mimic3']
+            #是在创建 MedicationMapping 类时传入的参数。
             med_loaders[dataset] = medloader_class[dataset](self.pth_dic)
-        
+        #在这里实例化了各数据集的加载器，并保存在 med_loaders 字典中。
         return med_loaders
+#med_loaders=  {'hirid‘:Hirid_meds(self.pth_dic)
+#               'eicu':Eicu_meds(self.pth_dic)
+#               'mimic4':Mimic4_meds(self.pth_dic)
+#               }
+#实例化了各数据集的加载器，并保存在 med_loaders 字典中。
         
     def _get_drugnames(self):
         meds = []        
+        #self.med_loaders =
+        #  {'hirid‘:Hirid_meds(self.pth_dic)
+#               'eicu':Eicu_meds(self.pth_dic)
+#               'mimic4':Mimic4_meds(self.pth_dic)
+#               }
         for loader in self.med_loaders.values():
             meds.append(loader.get())
-            
+            #这里遍历所有加载器，调用其 get() 方法
         df = pd.concat(meds)
         df.to_parquet(self.med_mapping_pth+'drugnames.parquet')
         return df
@@ -349,17 +408,22 @@ class MedicationMapping(meds):
     def run(self, load_drugnames=True, fname='medications.json'):
         
         self.med_cids = pd.read_parquet(self.med_mapping_pth+'med_concept_ids.parquet')
+        #self.med_mapping_pth = self.pth_dic['medication_mapping_files']
 
         self.drugs = (pd.read_parquet(self.med_mapping_pth+'drugnames.parquet')
                       if load_drugnames
                       else self._get_drugnames())
-
+        #如果 load_drugnames=True，直接读取已保存的药物名 parquet 文件；
+        #否则调用 _get_drugnames()，从各数据集重新提取药物名并保存。
         self.drugs['drugname_lkup'] = (' '
                                        + self.drugs.drugname
                                              .str.replace(r'[/,\-,.,(,),:]',
                                                           ' ',
                                                           regex=True)
                                        + ' ')
+        #对药物名做简单的符号替换，便于后续字符串包含匹配。
+        #这个正则表达式会把药物名中的 /、,、-、.、(、)、: 这些符号全部替换成空格 ' '。
+        #"Aspirin(oral)-500mg" 经过处理后会变成 " Aspirin oral  500mg "。
         medications_json = {}
         for name, aliases in self.drug_mapping.items():
             print(name)
@@ -367,10 +431,10 @@ class MedicationMapping(meds):
             df_al = []
 
             medications_json[name] = {'blended': [],
-                                      'amsterdam': [],
+                               #       'amsterdam': [],
                                       'eicu': [],
                                       'hirid': [],
-                                      'mimic3': [],
+                               #       'mimic3': [],
                                       'mimic4': []}
             aliases = (pd.concat([pd.Series([name]), aliases])
                          .dropna().drop_duplicates())
@@ -391,11 +455,14 @@ class MedicationMapping(meds):
             except KeyError:
                 self.concept_id = 0
             medications_json[name]['blended'] = self.concept_id
+            #对每个标准药物名及其别名，查找所有数据集中匹配的药物名，并按数据集分类保存。
+            #同时记录 concept_id。
         
         json.dump(medications_json,
                   open(self.aux_pth+fname, 'w'),
                   indent=4,
                   ensure_ascii=False)
-
+        #将所有标准药物的映射关系保存为 JSON 文件
         self.medication_json = medications_json
+
         return medications_json

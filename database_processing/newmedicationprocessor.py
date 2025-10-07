@@ -10,7 +10,12 @@ class NewMedicationProcessor(DataProcessor):
     This class allows to process the drug data of each database in a unified 
     manner. It maps the brand names and labels in the source database to 
     omop ingredients using the drug mapping (auxillary_files/medications.json).
-    The outputs a dataframe that is saved as medication.parquet file or as 
+    The outputs a dataframe that is 
+    
+    
+    
+    
+    d as medication.parquet file or as 
     several parquet chunks when filesize is inconvenient.
     
     
@@ -31,6 +36,22 @@ class NewMedicationProcessor(DataProcessor):
                  unit_offset=None,
                  offset_calc=False,
                  col_admittime=None):
+        #NewMedicationProcessor('hirid',
+        #                                   lf_med=pharma,
+        #                                   lf_labels=labels,
+        #                                   col_pid='admissionid',
+        #                                   col_med='pharmaitem',
+        #                                   col_start='givenat',
+        #                                   col_end=None,
+        #                                   col_los='lengthofstay',
+        #                                   col_dose='givendose',
+        #                                   col_dose_unit='doseunit',
+        #                                   col_route='route',
+        #                                   offset_calc=True,
+        #                                   col_admittime='admissiontime',
+        #                                   dose_unit_conversion_dic=dose_unit_conversions
+        #                                 )
+
         super().__init__(dataset)
 
         self.med_mapping = self._load_med_mapping()
@@ -69,9 +90,17 @@ class NewMedicationProcessor(DataProcessor):
                         self.col_dose_unit : 'dose_unit',
                         self.col_route : 'route'
                         }
+        #col_mapping = 
+     
+        #      {'givenat':'start',
+        #                  None: 'end',
+        #                  'givendose': 'dose',
+        #                  'doseunit': 'dose_unit',
+        #                  'route': 'route'}
+        
         self.cols_to_create = [v for k, v in col_mapping.items() if k is None]
         self.rename_dic = {k: v for k, v in col_mapping.items() if k is not None}
-        
+
     
     def _dose_unit_expressions(self):
         exprs = []
@@ -190,6 +219,7 @@ class NewMedicationProcessor(DataProcessor):
         return lf
 
     def _add_missing_cols(self, lf):
+        #self.cols_to_create=['end']
         lf = lf.with_columns(
                 (pl.lit(None).cast(self.schema[col]).alias(col) for col in self.cols_to_create)
             )
@@ -210,8 +240,15 @@ class NewMedicationProcessor(DataProcessor):
             pl.col('route').replace(self.mapping_drug_route, default=None).cast(pl.Int32).alias('route_concept_id')
             )
         return lf
-    
+
     def run(self):
+        # lazycloo = self.lf_med.collect()
+        #lf_med=pharma
+        #col_pid='admissionid'
+        print(f'调试，self.rename_dic={self.rename_dic}')
+        #{'givenat': 'start', 'givendose': 'dose', 'doseunit': 'dose_unit', 'route': 'route'}
+        # print(f'调试，pharma={lazycloo}')
+        print(f'调试，self.lf_labels={self.lf_labels.explain(optimized=True)}')
         med = (self.lf_med
                .pipe(self._add_missing_cols)
                .join(self.lf_labels, on=self.col_pid)
@@ -225,4 +262,3 @@ class NewMedicationProcessor(DataProcessor):
 
         return med
 
-        
