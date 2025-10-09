@@ -130,7 +130,8 @@ class DataPreparator(DataProcessor):
 							unit_los='second',
 							cast_to_float=True,
 							col_value=None,
-							additional_expr=None
+							additional_expr=None,
+							db=None
 							):
 		# (self.pl_prepare_tstable, 
   #                   itemid_label='variableid',
@@ -185,10 +186,18 @@ class DataPreparator(DataProcessor):
 					)
 			return lf
 		
-		def _keepvars(lf, col_variable, keepvars=None):
+		def _keepvars(lf, col_variable, keepvars=None,db=None):
 			# mimic4报错
 			if keepvars is not None:
-				return lf.filter(pl.col(col_variable).is_in(keepvars))
+				print(f'database={db}')
+				# col_variable=itemid
+				# print(f'调试，keepvars={keepvars}，colvariable={col_variable}')
+				if db=='mimic4':
+					print(f'调试，type keepvars={type(keepvars)}')
+					keepvars_list = keepvars['itemid'].to_list()
+					return lf.filter(pl.col(col_variable).is_in(keepvars_list))
+				else:
+					return lf.filter(pl.col(col_variable).is_in(keepvars))
 
 			return lf
 		
@@ -233,7 +242,7 @@ class DataPreparator(DataProcessor):
 				  alias=self.col_offset,
 				  unit=unit_offset)
 			.pipe(_clip_time)
-			.pipe(_keepvars, col_variable=col_variable, keepvars=keepvars)
+			.pipe(_keepvars, col_variable=col_variable, keepvars=keepvars,db=db)
 			.with_columns(
 				_expressions(col_value, cast_to_float, additional_expr)
 				)
