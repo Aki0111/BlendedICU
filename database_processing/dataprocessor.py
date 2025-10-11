@@ -238,14 +238,14 @@ class DataProcessor:
                 print('尝试直接将LazyFrame保存为parquet文件')
                 # print('最终保存前的列:', df.columns)
                 # print('最终保存前的schema:', df.schema)
-                if "/hirid_data/timeseries.parquet" in str(savepath):
-                    print("检测到特定大文件 /hirid_data/timeseries.parquet，启用内存优化模式...")
-                    df.sink_parquet(
-                                    savepath,
-                                    row_group_size=200,  
-                                )
-                else:
-                    df.sink_parquet(savepath, row_group_size=row_group_size)
+                # if "/hirid_data/timeseries.parquet" in str(savepath):
+                #     print("检测到特定大文件 /hirid_data/timeseries.parquet，启用内存优化模式...")
+                #     df.sink_parquet(
+                #                     savepath,
+                #                     row_group_size=200,  
+                #                 )
+                # else:
+                df.sink_parquet(savepath, row_group_size=row_group_size)
                 print('done')
                 return df
             except pl.exceptions.InvalidOperationError as e:
