@@ -358,7 +358,9 @@ class mimic4Preparator(DataPreparator):
                              col_variable='itemid',
                              col_mergestayid='hadm_id',
                              unit_los='day',
-                             col_value='valuenum')
+                             col_value='valuenum',
+                             db='mimic4'
+                             )
                        .join(dlabitems.select('itemid', 'label'), on='itemid')
                        .drop(['hadm_id', 'itemid'])
                        .collect())

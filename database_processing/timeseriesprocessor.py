@@ -240,7 +240,7 @@ class TimeseriesProcessor(DataProcessor):
         
         lf = (pl.concat([df.select(sorted(df.columns)) for df in [lf_wide_melted, lf_long]], how='vertical_relaxed')
               .with_columns(
-                  pl.col('variable').replace(self.col_mapping)
+                  pl.col('variable').cast(pl.Utf8).replace(self.col_mapping)
                   )
              .pipe(self._harmonize_long)
              .pipe(self.add_prefixed_pid)
