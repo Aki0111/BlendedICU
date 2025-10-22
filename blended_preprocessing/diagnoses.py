@@ -27,7 +27,7 @@ class blended_DiagProcessor(DataProcessor):
         return diagnoses
     
     def _load_diagnosis(self, dataset):
-        
+
         pth = self.diagnoses_pths[dataset]
         df = self.load(pth, columns=self.loadcols).set_index('uniquepid')
         return df
