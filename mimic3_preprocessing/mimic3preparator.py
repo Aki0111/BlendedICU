@@ -352,7 +352,7 @@ class mimic3Preparator(DataPreparator):
         self.get_labels(lazy=True)
         dlabitems = pl.scan_parquet(self.d_labitems_parquet_pth)
         labevents = pl.scan_parquet(self.labevents_parquet_pth)
-        
+        cols_to_drop = [x for x in ['HADM_ID', 'ITEMID'] if x in labevents.columns]
         self.df_lab = (labevents
                        .select('HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUENUM')
                        .drop_nulls()
@@ -367,7 +367,7 @@ class mimic3Preparator(DataPreparator):
                              col_mergestayid='HADM_ID',
                              col_value='VALUENUM')
                        .join(dlabitems.select('ITEMID', 'LABEL'), on='ITEMID')
-                       .drop(columns=['HADM_ID', 'ITEMID'])
+                       .drop(cols_to_drop)
                        .collect())
         
         self.save(self.df_lab, self.lab_savepath)

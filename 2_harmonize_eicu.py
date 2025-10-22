@@ -16,7 +16,7 @@ tsp = eicuTSP(
     periodic_pth='tsperiodic.parquet',
     inout_pth='tsintakeoutput.parquet')
 
-tsp.run_harmonization()
+tsp.run_harmonization(database='eicu')
 
 flp = eicu_FLProcessor()
 

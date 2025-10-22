@@ -51,12 +51,12 @@ class eicuPreparator(DataPreparator):
         self.infusiondrug_parquet_pth = self.raw_as_parquet_pth + self._get_name_as_parquet(infusiondrug_pth)
         self.medication_parquet_pth = self.raw_as_parquet_pth + self._get_name_as_parquet(medication_pth)
         
-        self.intakeoutput_savepath = f'{self.savepath}/tsintakeoutput.parquet'
-        self.lab_savepath = f'{self.savepath}/lab.parquet'
-        self.aperiodic_savepath = f'{self.savepath}/tsaperiodic.parquet'
-        self.nursecharting_savepath = f'{self.savepath}/tsnurse.parquet'
-        self.tsresp_savepath = f'{self.savepath}/tsresp.parquet'
-        self.tsperiodic_savepath = f'{self.savepath}/tsperiodic.parquet'
+        self.intakeoutput_savepath = f'{self.savepath}tsintakeoutput.parquet'
+        self.lab_savepath = f'{self.savepath}lab.parquet'
+        self.aperiodic_savepath = f'{self.savepath}tsaperiodic.parquet'
+        self.nursecharting_savepath = f'{self.savepath}tsnurse.parquet'
+        self.tsresp_savepath = f'{self.savepath}tsresp.parquet'
+        self.tsperiodic_savepath = f'{self.savepath}tsperiodic.parquet'
 
         self.col_los = 'unitdischargeoffset'
         self.unit_los = 'minute'

@@ -11,10 +11,10 @@ Approximate running time:
 from amsterdam_preprocessing.AmsterdamPreparator import AmsterdamPreparator
 
 ams_prep = AmsterdamPreparator(
-    admission_pth='admissions.csv.gz',
-    drugitems_pth='drugitems.csv.gz',
-    numericitems_pth='numericitems.csv.gz',
-    listitems_pth='listitems.csv.gz')
+    admission_pth='admissions.csv',
+    drugitems_pth='drugitems.csv',
+    numericitems_pth='numericitems.csv',
+    listitems_pth='listitems.csv')
 
 ams_prep.raw_tables_to_parquet()
 

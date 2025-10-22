@@ -73,7 +73,7 @@ class eicuTSP(TimeseriesProcessor):
         return self.labels.select('patientunitstayid').unique().collect().to_numpy().flatten()
     
     
-    def run_harmonization(self):
+    def run_harmonization(self,database=None):
         lf_med = self.harmonize_columns(self.lf_med,
                                              **self.colnames_med)
 
@@ -113,7 +113,7 @@ class eicuTSP(TimeseriesProcessor):
         lf_ts_ver = self.filter_tables(lf_ts_ver,
                                     kept_variables=self.kept_ts)
         
-        self.timeseries_to_long(lf_ts_ver, lf_ts_hor.lazy())
+        self.timeseries_to_long(lf_ts_ver, lf_ts_hor.lazy(),database=database)
         self.medication_to_long(lf_med)
         
     

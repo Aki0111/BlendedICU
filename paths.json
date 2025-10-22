@@ -1,12 +1,12 @@
 {
-    "data_path": "E:/Science/Blended/",
-    "eicu_source_path": "E:/Science/database/eICU/",
-    "mimic4_source_path": "E:/Science/database/mimic-iv-3.1/",
-    "mimic3_source_path": "E:/Science/database/mimic-iii-1.4/",
-    "amsterdam_source_path": "Y:/UMC/",
-    "hirid_source_path": "E:/Science/database/hirid/",
-    "auxillary_files": "E:/Science/Blended/auxillary_files/",
-    "vocabulary": "E:/Science/Blended/auxillary_files/OMOP_vocabulary/",
-    "user_input": "E:/Science/Blended/auxillary_files/user_input/",
-    "medication_mapping_files": "E:/Science/Blended/auxillary_files/medication_mapping_files/"
+  "data_path": "E:/Science/Blended/",
+  "eicu_source_path": "E:/Science/database/eICU/",
+  "mimic4_source_path": "E:/Science/database/mimic-iv-3.1/",
+  "mimic3_source_path": "E:/Science/database/mimic-iii-1.4/",
+  "amsterdam_source_path": "E:/Science/database/AmsterdamUMCdb-v1.0.2/",
+  "hirid_source_path": "E:/Science/database/hirid/",
+  "auxillary_files": "E:/Science/Blended/auxillary_files/",
+  "vocabulary": "E:/Science/Blended/auxillary_files/OMOP_vocabulary/",
+  "user_input": "E:/Science/Blended/auxillary_files/user_input/",
+  "medication_mapping_files": "E:/Science/Blended/auxillary_files/medication_mapping_files/"
 }

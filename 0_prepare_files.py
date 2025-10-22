@@ -30,11 +30,12 @@ ingredient_to_drug = om.run()
 #表面名为 ohdsi_icu_medications.csv
 mm = MedicationMapping(pth_dic,
                        datasets=[
-                           'hirid', 
-                                 #'amsterdam',
-                                 'mimic4',
-                       #          'mimic3',
-                                 'eicu'])
+                                 # 'hirid', 
+                                 'amsterdam',
+                                 # 'mimic4',
+                                 # 'mimic3',
+                                 # 'eicu'
+                                 ])
 #解压
 
 medication_json = mm.run(load_drugnames=False, fname='medications.json')

@@ -5,12 +5,16 @@ It contains useful functions to convert the format of data, harmonize units and
 labels and save the timeseries variables as parquet files.
 """
 from pathlib import Path
-
+from natsort.utils import PathArg
 import pandas as pd
+from pandas.io.gbq import import_optional_dependency
 import polars as pl
 import pyarrow as pa
 import numpy as np
 from natsort import natsorted
+import os,gc,psutil
+
+
 
 from database_processing.dataprocessor import DataProcessor
 
@@ -93,8 +97,179 @@ class TimeseriesProcessor(DataProcessor):
         if isinstance(df, pl.lazyframe.frame.LazyFrame):
             df = df.collect()
         return df.to_pandas()
+
+    def get_memory_usage(self):
+        """获取当前进程的内存使用情况（GB）"""
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        return memory_info.rss / 1024 / 1024 / 1024  # 转换为GB
+
+    def print_memory_usage(self,stage_name, initial_memory=None):
+        """打印内存使用情况"""
+        current_memory = self.get_memory_usage()
+        if initial_memory is not None:
+            change = current_memory - initial_memory
+            change_str = f"(变化: {change:+.2f} GB)"
+        else:
+            change_str = ""
+        print(f"[内存监控] {stage_name}: {current_memory:.2f} GB {change_str}")
+        return current_memory
+
+    def timeseries_to_long_optimized(self, lf_long=None, lf_wide=None, sink=True):
+        print("使用优化方法.")
+        # initial_memory = self.print_memory_usage("开始处理前")
+        """优化版本：在关键操作后立即持久化数据"""
+        cols_index = {self.idx_col: pl.Int64, self.time_col: pl.Duration}
+        self.col_mapping = {str(k): v for k, v in self.col_mapping.items()}
     
-    
+        if lf_wide is None:
+            lf_wide = pl.LazyFrame(schema=cols_index|{'dummy': pl.Float32})
+        if lf_long is None:
+            lf_long = pl.LazyFrame(schema=cols_index | {'variable':pl.String, 'value': pl.Float32})
+
+        # 创建临时目录
+        temp_dir = Path(self.pth_long_timeseries).parent / "temp"
+        temp_dir.mkdir(exist_ok=True)
+        
+        
+        # 阶段1: melt 操作 + 立即持久化
+        print("阶段1: 执行melt操作...")
+        stage1_memory = self.print_memory_usage("阶段1开始")
+        temp_file1 = temp_dir / "temp_melted.parquet"
+        if not os.path.exists(temp_file1):
+            lf_wide_melted = (lf_wide
+                                .melt(['patient', 'time'])
+                                .with_columns(pl.col('value').cast(pl.Float32, strict=False)))
+        
+            # 立即收集并保存到临时文件
+            self.print_memory_usage("melt操作完成，开始收集数据")
+            lf_wide_melted.collect(streaming=True).write_parquet(temp_file1)
+            self.print_memory_usage("文件写入完成")
+            print("阶段1完成: melt结果已保存到临时文件")
+        
+            # 清理内存
+            del lf_wide_melted
+            gc.collect()
+            stage1_end_memory = self.print_memory_usage("阶段1清理后", stage1_memory)
+            print(f"阶段1内存净变化: {stage1_end_memory - stage1_memory:+.2f} GB")
+        else:
+            print(f'{temp_file1}已存在，跳过阶段1')
+        
+        # 阶段2: concat 操作 + 立即持久化
+        print("阶段2: 执行concat操作...")
+        stage2_memory = self.print_memory_usage("阶段2开始")
+        temp_file2 = temp_dir / "temp_concatenated.parquet"
+        if not os.path.exists(temp_file2):
+            # 从临时文件重新加载数据
+            melted_df = pl.scan_parquet(temp_file1)
+            self.print_memory_usage("临时文件加载完成")
+        
+            # 执行concat
+            concatenated = pl.concat([
+                melted_df.select(sorted(melted_df.columns)),
+                lf_long.select(sorted(lf_long.columns))
+            ], how='vertical_relaxed')
+            self.print_memory_usage("concat操作完成，开始收集数据")
+            # 立即收集并保存到临时文件
+            concatenated.collect(streaming=True).write_parquet(temp_file2)
+            self.print_memory_usage("concat文件写入完成")
+            print("阶段2完成: concat结果已保存到临时文件")
+        
+            # 清理内存
+            del melted_df, concatenated
+            gc.collect()
+            stage2_end_memory = self.print_memory_usage("阶段2清理后", stage2_memory)
+            print(f"阶段2内存净变化: {stage2_end_memory - stage2_memory:+.2f} GB")
+        else:
+            print(f'{temp_file2}已存在，跳过阶段2')
+        
+            # 阶段3: 变量替换和其他转换 - 拆分版本避免内存爆炸
+        print("阶段3: 执行变量替换和转换...")
+        self.print_memory_usage("阶段3开始")
+        
+        if not os.path.exists(self.pth_long_timeseries):
+            # 步骤3.1: 变量替换
+            print("步骤3.1: 执行变量替换...")
+            step3_1_memory = self.print_memory_usage("步骤3.1开始")
+            temp_file3_1 = temp_dir / "temp_step3_1.parquet"
+            
+            if not os.path.exists(temp_file3_1):
+                concat_df = pl.scan_parquet(temp_file2)
+                self.print_memory_usage("concat文件加载完成")
+                
+                step3_1_df = (concat_df
+                                .with_columns(
+                                    pl.col('variable')
+                                    .cast(pl.Utf8)
+                                    .replace(self.col_mapping)
+                                )
+                                .collect(streaming=True))
+                
+                step3_1_df.write_parquet(temp_file3_1)
+                self.print_memory_usage("步骤3.1完成")
+                
+                del concat_df, step3_1_df
+                gc.collect()
+                self.print_memory_usage("步骤3.1内存清理后", step3_1_memory)
+            else:
+                print(f'{temp_file3_1}已存在，跳过步骤3.1')
+            
+            # 步骤3.2: 应用_harmonize_long
+            print("步骤3.2: 应用_harmonize_long...")
+            step3_2_memory = self.print_memory_usage("步骤3.2开始")
+            temp_file3_2 = temp_dir / "temp_step3_2.parquet"
+            
+            if not os.path.exists(temp_file3_2):
+                step3_1_df = pl.scan_parquet(temp_file3_1)
+                step3_2_df = step3_1_df.pipe(self._harmonize_long).collect(streaming=True)
+                
+                step3_2_df.write_parquet(temp_file3_2)
+                self.print_memory_usage("步骤3.2完成")
+                
+                del step3_1_df, step3_2_df
+                gc.collect()
+                self.print_memory_usage("步骤3.2内存清理后", step3_2_memory)
+            else:
+                print(f'{temp_file3_2}已存在，跳过步骤3.2')
+            
+            # 最终阶段: 应用add_prefixed_pid和去重
+            print("最终阶段: 应用add_prefixed_pid和去重...")
+            step3_3_memory = self.print_memory_usage("步骤3.3开始")
+            
+            step3_2_df = pl.scan_parquet(temp_file3_2)
+            df = step3_2_df.pipe(self.add_prefixed_pid).unique().collect(streaming=True)
+            
+            df.write_parquet(self.pth_long_timeseries)
+            self.print_memory_usage("步骤3完成")
+            
+            # del step3_2_df, df
+            # gc.collect()
+            # self.print_memory_usage("步骤3内存清理后", step3_3_memory)
+            
+            # # 清理中间临时文件
+            # for temp_file in [temp_file3_1, temp_file3_2]:
+            #     if os.path.exists(temp_file):
+            #         os.remove(temp_file)
+
+            print("阶段3完成: 转换结果已保存")
+        else:
+            df=None
+            print(f'{self.pth_long_timeseries}已存在，跳过')
+        return df
+
+        # 清理临时文件
+        # self._cleanup_temp_files(temp_dir)
+
+    def _cleanup_temp_files(self, temp_dir):
+        """清理临时文件"""
+        try:
+            import shutil
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+                print(f"已清理临时目录: {temp_dir}")
+        except Exception as e:
+            print(f"清理临时文件时出错: {e}")    
+            
     def newprocess_tables(self,
                          timeseries,
                          med=None,
@@ -223,33 +398,46 @@ class TimeseriesProcessor(DataProcessor):
     def timeseries_to_long(self,
                            lf_long=None,
                            lf_wide=None,
-                           sink=True):
-        cols_index = {self.idx_col: pl.Int64, self.time_col: pl.Duration}
-        if lf_wide is None:
-            lf_wide = pl.LazyFrame(schema=cols_index|{'dummy': pl.Float32})
-        if lf_long is None:
-            lf_long = pl.LazyFrame(schema=cols_index | {'variable':pl.String,
-                                                        'value': pl.Float32})
+                           sink=True,database=None):
+        if database == 'eicu':
+            self.timeseries_to_long_optimized(lf_long=lf_long,lf_wide=lf_wide,sink=sink)
+        else:
+            cols_index = {self.idx_col: pl.Int64, self.time_col: pl.Duration}
+            self.col_mapping = {str(k): v for k, v in self.col_mapping.items()}
+            if lf_wide is None:
+                lf_wide = pl.LazyFrame(schema=cols_index|{'dummy': pl.Float32})
+            if lf_long is None:
+                lf_long = pl.LazyFrame(schema=cols_index | {'variable':pl.String,
+                                                                'value': pl.Float32})
 
-        lf_wide_melted = (lf_wide
-                          .melt(['patient', 'time'])
-                          .with_columns(
-                              pl.col('value').cast(pl.Float32, strict=False)
+
+            lf_wide_melted = (lf_wide
+                              .melt(['patient', 'time'])
+                              .with_columns(
+                                  pl.col('value').cast(pl.Float32, strict=False)
+                                  )
                               )
-                          )
-        
-        lf = (pl.concat([df.select(sorted(df.columns)) for df in [lf_wide_melted, lf_long]], how='vertical_relaxed')
-              .with_columns(
-                  pl.col('variable').cast(pl.Utf8).replace(self.col_mapping)
+            lf = (pl.concat([df.select(sorted(df.columns)) for df in [lf_wide_melted, lf_long]], how='vertical_relaxed')
+                  .with_columns(
+                      pl.col('variable')
+                      .cast(pl.Utf8).replace(self.col_mapping)
+                      )
+                  .pipe(self._harmonize_long)
+                  .pipe(self.add_prefixed_pid)
+                  .unique()
                   )
-             .pipe(self._harmonize_long)
-             .pipe(self.add_prefixed_pid)
-             .unique()
-              )
-        if not sink:# avoids a weird error on Hirid data.
-            print('Collecting...')
-            lf = lf.collect(streaming=True)
-        self.save(lf, self.pth_long_timeseries)
+            # print(f'最终保存前的列:{lf.schema},typeself={type(self.col_mapping)}')
+            # aaa=lf.select(pl.col("variable"))
+            # aaa=aaa.collect()
+            # print(f'调试，结构={aaa.shape}')
+            if not sink:# avoids a weird error on Hirid data.
+                print('Collecting...没有sink')
+                lf = lf.collect(streaming=True)
+            #eicu这玩意给巨无霸，甚至collect不动
+            # aaa=lf.collect()
+            # paatth=self.pth_long_timeseries
+            # print(f'调试,lazyframe={paatth}')
+            self.save(lf, self.pth_long_timeseries)
         
     def medication_to_long(self, lf_long_med):
         lf_long_med = (lf_long_med
@@ -685,4 +873,5 @@ class TimeseriesProcessor(DataProcessor):
                  if add_prefix
                  else self.stays)
         return np.array_split(stays, self.stays.size//n_patients)
-        
+
+    

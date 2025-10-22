@@ -1,7 +1,7 @@
 import json
 import tarfile
 from pathlib import Path
-
+import os
 import pandas as pd
 
 
@@ -210,19 +210,30 @@ class Amsterdam_meds(meds):
 
     def get(self):
         print('\n\nAmsterdam\n===========\n')
-        pth_drugs = self.datadir+'drugitems.csv.gz'
-        pth_patients = self.datadir+'admissions.csv.gz'
-
+        pth_drugs = self.datadir+'drugitems.csv'
+        pth_patients = self.datadir+'admissions.csv'
         admissions = pd.read_csv(pth_patients,
-                                 compression='gzip',
-                                 encoding='ISO-8859-1',
-                                 usecols=['admissionid'])
-
-        n_patients = admissions.admissionid.nunique()
+                                     encoding='ISO-8859-1',
+                                     usecols=['admissionid'])
         drugs = pd.read_csv(pth_drugs,
-                            compression='gzip',
                             encoding='ISO-8859-1',
                             usecols=['admissionid', 'item'])
+
+        if not os.path.exists(pth_drugs):
+            pth_drugs = pth_drugs+'.gz'
+            drugs = pd.read_csv(pth_drugs,
+                    compression='gzip',
+                    encoding='ISO-8859-1',
+                    usecols=['admissionid', 'item'])
+        if not os.path.exists(pth_patients):
+            pth_patients = pth_patients+'.gz'
+            admissions = pd.read_csv(pth_patients,
+                                     compression='gzip',
+                                     encoding='ISO-8859-1',
+                                     usecols=['admissionid'])
+
+        n_patients = admissions.admissionid.nunique()
+
 
         drugs = drugs.drop_duplicates()
 
@@ -370,10 +381,10 @@ class MedicationMapping(meds):
     def _get_med_loaders(self, datasets):
         #加载各数据集
         medloader_class = {
- #           'amsterdam': Amsterdam_meds,
+           'amsterdam': Amsterdam_meds,
             'hirid': Hirid_meds,
             'eicu': Eicu_meds,
- #           'mimic3': Mimic3_meds,
+            'mimic3': Mimic3_meds,
             'mimic4': Mimic4_meds
             }
         

@@ -16,12 +16,13 @@ import polars as pl
 class DataProcessor:
     def __init__(self,
                  dataset,
-                 datasets=('eicu',
-                          'mimic4',
-                       #  'mimic3', 
-                         'hirid', 
-                       #  'amsterdam'
-                         )):
+                 datasets=(
+                     'eicu',
+                     'mimic4',
+                     'mimic3', 
+                     'hirid', 
+                     'amsterdam'
+                     )):
         self.datasets = datasets
         self.dataset = dataset
         self.SEED = 974
@@ -223,6 +224,7 @@ class DataProcessor:
         convenience function: save safely a file to parquet by creating the 
         parent directory if it does not exist.
         """
+        print(f'正在保存 {savepath}')
         Path(savepath).parent.mkdir(parents=True, exist_ok=True)
         #savepath = E:/Science/Blended/hirid_data/medication.parquet'
         if isinstance(df, pl.lazyframe.frame.LazyFrame):
