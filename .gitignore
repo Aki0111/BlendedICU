@@ -3,3 +3,12 @@ __pycache__/
 *pyc
 auxillary_files/medications.json
 auxillary_files/OMOP_vocabulary/
+/.vs/Blended/CopilotIndices/18.0.722.55285
+/.vs/Blended/CopilotIndices/18.0.813.4205
+/.vs
+/amsterdam_data
+/blended_data
+/eicu_data
+/hirid_data
+/mimic3_data
+/mimic4_data
